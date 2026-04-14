@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>赛博扫雷</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.json">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+:root{
+  --bg:#0a0a0f;--card:#12121a;--muted:#1c1c2e;--border:#2a2a3a;
+  --fg:#e0e0e0;--muted-fg:#6b7280;
+  --accent:#00ff88;--accent2:#ff00ff;--accent3:#00d4ff;--danger:#ff3366;
+}
+@keyframes glitch{0%,100%{transform:translate(0)}20%{transform:translate(-2px,1px)}40%{transform:translate(2px,-1px)}60%{transform:translate(-1px,2px)}80%{transform:translate(1px,-2px)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
+@keyframes scanline{0%{top:-100%}100%{top:100%}}
+@keyframes fadeIn{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:scale(1)}}
+body{
+  background:var(--bg);color:var(--fg);
+  font-family:"JetBrains Mono","Fira Code","Consolas",monospace;
+  min-height:100vh;overflow:hidden;position:relative;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+}
+body::before{
+  content:'';position:fixed;top:0;left:0;right:0;bottom:0;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,255,136,.015) 2px,rgba(0,255,136,.015) 4px);
+  pointer-events:none;z-index:9999;
+}
+body::after{
+  content:'';position:fixed;top:-100%;left:0;right:0;height:100%;
+  background:linear-gradient(transparent 50%,rgba(0,255,136,.03) 50%);
+  animation:scanline 8s linear infinite;pointer-events:none;z-index:9998;
+}
+.container{width:100%;max-width:480px;padding:12px;position:relative;z-index:1}
+.title{
+  font-family:"Orbitron","Share Tech Mono",monospace;font-size:22px;font-weight:700;
+  text-align:center;margin-bottom:12px;letter-spacing:3px;
+  background:linear-gradient(90deg,var(--accent),var(--accent3));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  text-shadow:none;position:relative;
+}
+.title::after{
+  content:'MINESWEEPER';position:absolute;left:0;top:0;width:100%;
+  background:linear-gradient(90deg,var(--accent2),var(--accent));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  opacity:0;animation:glitch 3s infinite;
+}
+/* HUD */
+.hud{
+  display:flex;justify-content:space-between;align-items:center;
+  background:var(--card);border:1px solid var(--border);border-radius:8px;
+  padding:8px 14px;margin-bottom:10px;
+}
+.hud-item{display:flex;align-items:center;gap:6px;font-size:14px}
+.hud-item .label{color:var(--muted-fg);font-size:11px;text-transform:uppercase;letter-spacing:1px}
+.hud-item .value{color:var(--accent);font-weight:700;font-size:16px;min-width:36px;text-align:center}
+.hud-item .value.mines{color:var(--accent2)}
+.hud-item .value.time{color:var(--accent3)}
+.face-btn{
+  width:36px;height:36px;border-radius:50%;border:1px solid var(--border);
+  background:var(--muted);cursor:pointer;font-size:18px;
+  display:flex;align-items:center;justify-content:center;
+  transition:all .15s;
+}
+.face-btn:active{transform:scale(.9);border-color:var(--accent)}
+/* 难度选择 */
+.diff-bar{
+  display:flex;gap:6px;margin-bottom:10px;justify-content:center;
+}
+.diff-btn{
+  padding:6px 14px;border-radius:6px;border:1px solid var(--border);
+  background:var(--card);color:var(--muted-fg);font-size:12px;
+  font-family:inherit;cursor:pointer;transition:all .15s;letter-spacing:1px;
+}
+.diff-btn.active{border-color:var(--accent);color:var(--accent);background:rgba(0,255,136,.08)}
+.diff-btn:active{transform:scale(.95)}
+/* 棋盘 */
+.board-wrap{
+  background:var(--card);border:1px solid var(--border);border-radius:10px;
+  padding:8px;margin:0 auto;position:relative;overflow:hidden;
+}
+.board-wrap::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:.3;
+}
+.board{
+  display:grid;gap:2px;user-select:none;
+}
+.cell{
+  width:100%;aspect-ratio:1;border-radius:3px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:14px;font-weight:700;cursor:pointer;
+  transition:all .1s;position:relative;
+}
+.cell.hidden{
+  background:var(--muted);border:1px solid var(--border);
+}
+.cell.hidden:active{transform:scale(.92);background:rgba(0,255,136,.06)}
+.cell.revealed{
+  background:rgba(18,18,26,.8);border:1px solid rgba(42,42,58,.3);
+}
+.cell.mine{background:rgba(255,51,102,.15);border-color:rgba(255,51,102,.3)}
+.cell.mine-hit{background:rgba(255,51,102,.4);border-color:var(--danger);animation:pulse .5s infinite}
+.cell.flagged{border-color:var(--accent2)}
+.cell.flagged::after{content:'🚩';font-size:12px}
+.cell .n1{color:var(--accent3)}.cell .n2{color:var(--accent)}.cell .n3{color:var(--accent2)}
+.cell .n4{color:#8b5cf6}.cell .n5{color:var(--danger)}.cell .n6{color:#06b6d4}
+.cell .n7{color:#f59e0b}.cell .n8{color:var(--muted-fg)}
+/* 长按标记提示 */
+.hint{
+  text-align:center;color:var(--muted-fg);font-size:11px;margin-top:8px;
+  letter-spacing:1px;
+}
+/* overlay */
+.overlay{
+  position:fixed;top:0;left:0;right:0;bottom:0;
+  background:rgba(10,10,15,.92);z-index:100;
+  display:flex;align-items:center;justify-content:center;
+  animation:fadeIn .2s;
+}
+.overlay-box{
+  background:var(--card);border:1px solid var(--border);border-radius:14px;
+  padding:28px 24px;text-align:center;max-width:320px;width:90%;
+  position:relative;overflow:hidden;
+}
+.overlay-box::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,var(--accent),var(--accent2),var(--accent3));
+}
+.overlay-title{
+  font-family:"Orbitron",monospace;font-size:20px;font-weight:700;
+  margin-bottom:12px;letter-spacing:2px;
+}
+.overlay-title.win{color:var(--accent)}.overlay-title.lose{color:var(--danger)}
+.overlay-text{color:var(--muted-fg);font-size:13px;margin-bottom:16px;line-height:1.6}
+.overlay-btn{
+  padding:10px 24px;border-radius:8px;border:1px solid var(--accent);
+  background:rgba(0,255,136,.1);color:var(--accent);
+  font-family:inherit;font-size:14px;cursor:pointer;
+  transition:all .15s;letter-spacing:1px;margin:4px;
+}
+.overlay-btn:active{transform:scale(.95);background:rgba(0,255,136,.2)}
+.overlay-btn.secondary{border-color:var(--border);color:var(--muted-fg);background:var(--muted)}
+/* 移动端flag模式切换 */
+.flag-toggle{
+  position:fixed;bottom:20px;right:20px;width:48px;height:48px;
+  border-radius:50%;border:2px solid var(--border);background:var(--card);
+  display:flex;align-items:center;justify-content:center;
+  font-size:20px;cursor:pointer;z-index:50;transition:all .15s;
+  box-shadow:0 4px 20px rgba(0,0,0,.5);
+}
+.flag-toggle.active{border-color:var(--accent2);box-shadow:0 0 20px rgba(255,0,255,.3)}
+.flag-toggle:active{transform:scale(.9)}
+@media(min-width:500px){.flag-toggle{display:none}}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="title">赛博扫雷</div>
+  <div class="diff-bar">
+    <button class="diff-btn active" onclick="setDiff(0)">初级</button>
+    <button class="diff-btn" onclick="setDiff(1)">中级</button>
+    <button class="diff-btn" onclick="setDiff(2)">高级</button>
+  </div>
+  <div class="hud">
+    <div class="hud-item"><span class="label">雷</span><span class="value mines" id="mineCount">10</span></div>
+    <button class="face-btn" id="faceBtn" onclick="resetGame()">😊</button>
+    <div class="hud-item"><span class="label">时间</span><span class="value time" id="timer">0</span></div>
+  </div>
+  <div class="board-wrap">
+    <div class="board" id="board"></div>
+  </div>
+  <div class="hint">点击翻开 · 长按/右键标旗</div>
+</div>
+<div class="flag-toggle" id="flagToggle" onclick="toggleFlagMode()">🚩</div>
+
+<script>
+const DIFFS = [
+  {name:'初级', rows:9, cols:9, mines:10},
+  {name:'中级', rows:16, cols:16, mines:40},
+  {name:'高级', rows:16, cols:30, mines:99},
+];
+let diff = 0, rows, cols, mineCount, board, revealed, flagged, mines, gameOver, gameWon, timerVal, timerInterval, firstClick, flagMode = false;
+
+function setDiff(d) {
+  diff = d;
+  document.querySelectorAll('.diff-btn').forEach((b,i) => b.classList.toggle('active', i===d));
+  resetGame();
+}
+
+function resetGame() {
+  const d = DIFFS[diff];
+  rows = d.rows; cols = d.cols; mineCount = d.mines;
+  board = Array.from({length:rows}, () => Array(cols).fill(0));
+  revealed = Array.from({length:rows}, () => Array(cols).fill(false));
+  flagged = Array.from({length:rows}, () => Array(cols).fill(false));
+  mines = new Set();
+  gameOver = false; gameWon = false; firstClick = true;
+  clearInterval(timerInterval); timerVal = 0;
+  document.getElementById('timer').textContent = '0';
+  document.getElementById('mineCount').textContent = mineCount;
+  document.getElementById('faceBtn').textContent = '😊';
+  hideOverlay();
+  renderBoard();
+}
+
+function placeMines(safeR, safeC) {
+  const safe = new Set();
+  for (let dr=-1; dr<=1; dr++) for (let dc=-1; dc<=1; dc++) {
+    const r=safeR+dr, c=safeC+dc;
+    if (r>=0 && r<rows && c>=0 && c<cols) safe.add(r*cols+c);
+  }
+  let placed = 0;
+  while (placed < mineCount) {
+    const r = Math.floor(Math.random()*rows), c = Math.floor(Math.random()*cols);
+    const key = r*cols+c;
+    if (!mines.has(key) && !safe.has(key)) { mines.add(key); placed++; }
+  }
+  // calc numbers
+  for (let r=0; r<rows; r++) for (let c=0; c<cols; c++) {
+    if (mines.has(r*cols+c)) { board[r][c] = -1; continue; }
+    let cnt = 0;
+    for (let dr=-1; dr<=1; dr++) for (let dc=-1; dc<=1; dc++) {
+      const nr=r+dr, nc=c+dc;
+      if (nr>=0 && nr<rows && nc>=0 && nc<cols && mines.has(nr*cols+nc)) cnt++;
+    }
+    board[r][c] = cnt;
+  }
+}
+
+function renderBoard() {
+  const el = document.getElementById('board');
+  // calc cell size
+  const maxW = Math.min(window.innerWidth - 40, 464);
+  const gap = 2;
+  const cellSize = Math.floor((maxW - (cols-1)*gap - 16) / cols);
+  const clampedSize = Math.max(cellSize, 20);
+  el.style.gridTemplateColumns = `repeat(${cols}, ${clampedSize}px)`;
+  el.style.gap = gap + 'px';
+  el.innerHTML = '';
+  for (let r=0; r<rows; r++) for (let c=0; c<cols; c++) {
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    cell.dataset.r = r; cell.dataset.c = c;
+    updateCell(cell, r, c);
+    // events
+    cell.addEventListener('click', () => onCellClick(r, c));
+    cell.addEventListener('contextmenu', e => { e.preventDefault(); onFlag(r, c); });
+    // long press for mobile
+    let lpt;
+    cell.addEventListener('touchstart', e => {
+      lpt = setTimeout(() => { onFlag(r, c); lpt = null; }, 400);
+    }, {passive:true});
+    cell.addEventListener('touchend', () => { if (lpt) clearTimeout(lpt); });
+    cell.addEventListener('touchmove', () => { if (lpt) clearTimeout(lpt); });
+    el.appendChild(cell);
+  }
+}
+
+function updateCell(cell, r, c) {
+  cell.className = 'cell';
+  cell.innerHTML = '';
+  if (revealed[r][c]) {
+    if (board[r][c] === -1) {
+      cell.classList.add('revealed','mine');
+      cell.textContent = '💣';
+    } else {
+      cell.classList.add('revealed');
+      if (board[r][c] > 0) {
+        const span = document.createElement('span');
+        span.className = 'n' + board[r][c];
+        span.textContent = board[r][c];
+        cell.appendChild(span);
+      }
+    }
+  } else if (flagged[r][c]) {
+    cell.classList.add('hidden','flagged');
+  } else {
+    cell.classList.add('hidden');
+  }
+}
+
+function getCell(r, c) {
+  return document.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);
+}
+
+function onCellClick(r, c) {
+  if (gameOver || gameWon) return;
+  if (flagMode) { onFlag(r, c); return; }
+  if (flagged[r][c]) return;
+  if (firstClick) {
+    firstClick = false;
+    placeMines(r, c);
+    startTimer();
+  }
+  if (revealed[r][c]) {
+    // chord: if number == adjacent flags, reveal rest
+    chord(r, c);
+    return;
+  }
+  reveal(r, c);
+}
+
+function reveal(r, c) {
+  if (r<0||r>=rows||c<0||c>=cols||revealed[r][c]||flagged[r][c]) return;
+  revealed[r][c] = true;
+  if (board[r][c] === -1) {
+    // hit mine
+    gameOver = true;
+    clearInterval(timerInterval);
+    document.getElementById('faceBtn').textContent = '😵';
+    // reveal all mines
+    for (const key of mines) {
+      const mr = Math.floor(key/cols), mc = key%cols;
+      revealed[mr][mc] = true;
+      const cell = getCell(mr, mc);
+      if (cell) updateCell(cell, mr, mc);
+    }
+    // mark the hit
+    const hitCell = getCell(r, c);
+    if (hitCell) hitCell.classList.add('mine-hit');
+    setTimeout(() => showResult(false), 500);
+    return;
+  }
+  const cell = getCell(r, c);
+  if (cell) updateCell(cell, r, c);
+  if (board[r][c] === 0) {
+    for (let dr=-1; dr<=1; dr++) for (let dc=-1; dc<=1; dc++) {
+      if (dr===0&&dc===0) continue;
+      reveal(r+dr, c+dc);
+    }
+  }
+  checkWin();
+}
+
+function chord(r, c) {
+  if (!revealed[r][c] || board[r][c] <= 0) return;
+  let flagCnt = 0;
+  for (let dr=-1; dr<=1; dr++) for (let dc=-1; dc<=1; dc++) {
+    const nr=r+dr, nc=c+dc;
+    if (nr>=0&&nr<rows&&nc>=0&&nc<cols&&flagged[nr][nc]) flagCnt++;
+  }
+  if (flagCnt === board[r][c]) {
+    for (let dr=-1; dr<=1; dr++) for (let dc=-1; dc<=1; dc++) {
+      const nr=r+dr, nc=c+dc;
+      if (nr>=0&&nr<rows&&nc>=0&&nc<cols&&!flagged[nr][nc]&&!revealed[nr][nc]) reveal(nr, nc);
+    }
+  }
+}
+
+function onFlag(r, c) {
+  if (gameOver || gameWon || revealed[r][c]) return;
+  flagged[r][c] = !flagged[r][c];
+  const cell = getCell(r, c);
+  if (cell) updateCell(cell, r, c);
+  const flagCnt = flagged.flat().filter(Boolean).length;
+  document.getElementById('mineCount').textContent = mineCount - flagCnt;
+}
+
+function checkWin() {
+  let unrevealed = 0;
+  for (let r=0; r<rows; r++) for (let c=0; c<cols; c++) {
+    if (!revealed[r][c]) unrevealed++;
+  }
+  if (unrevealed === mineCount) {
+    gameWon = true;
+    clearInterval(timerInterval);
+    document.getElementById('faceBtn').textContent = '😎';
+    // auto flag all mines
+    for (const key of mines) {
+      const mr = Math.floor(key/cols), mc = key%cols;
+      flagged[mr][mc] = true;
+      const cell = getCell(mr, mc);
+      if (cell) updateCell(cell, mr, mc);
+    }
+    document.getElementById('mineCount').textContent = '0';
+    setTimeout(() => showResult(true), 300);
+  }
+}
+
+function startTimer() {
+  timerVal = 0;
+  timerInterval = setInterval(() => {
+    timerVal++;
+    document.getElementById('timer').textContent = timerVal;
+    if (timerVal >= 999) clearInterval(timerInterval);
+  }, 1000);
+}
+
+function showResult(won) {
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.id = 'gameOverlay';
+  const box = document.createElement('div');
+  box.className = 'overlay-box';
+  const title = document.createElement('div');
+  title.className = 'overlay-title ' + (won ? 'win' : 'lose');
+  title.textContent = won ? '排雷成功' : '触雷阵亡';
+  const text = document.createElement('div');
+  text.className = 'overlay-text';
+  text.innerHTML = won
+    ? `用时 <span style="color:var(--accent3)">${timerVal}</span> 秒<br>${DIFFS[diff].name} · ${rows}×${cols} · ${mineCount}雷`
+    : `坚持了 <span style="color:var(--accent3)">${timerVal}</span> 秒<br>${DIFFS[diff].name} · ${rows}×${cols} · ${mineCount}雷`;
+  const btn = document.createElement('button');
+  btn.className = 'overlay-btn';
+  btn.textContent = '再来一局';
+  btn.onclick = resetGame;
+  box.append(title, text, btn);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+function hideOverlay() {
+  const o = document.getElementById('gameOverlay');
+  if (o) o.remove();
+}
+
+function toggleFlagMode() {
+  flagMode = !flagMode;
+  document.getElementById('flagToggle').classList.toggle('active', flagMode);
+}
+
+// resize
+window.addEventListener('resize', () => { if (!gameOver && !gameWon) renderBoard(); });
+
+// init
+resetGame();
+// SW
+if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+</script>
+</body>
+</html>
