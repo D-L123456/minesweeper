@@ -21,8 +21,8 @@
 body{
   background:var(--bg);color:var(--fg);
   font-family:"JetBrains Mono","Fira Code","Consolas",monospace;
-  min-height:100vh;overflow:hidden;position:relative;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  min-height:100vh;overflow-x:hidden;overflow-y:auto;position:relative;
+  display:flex;flex-direction:column;align-items:center;
 }
 body::before{
   content:'';position:fixed;top:0;left:0;right:0;bottom:0;
@@ -34,7 +34,7 @@ body::after{
   background:linear-gradient(transparent 50%,rgba(0,255,136,.03) 50%);
   animation:scanline 8s linear infinite;pointer-events:none;z-index:9998;
 }
-.container{width:100%;max-width:480px;padding:12px;position:relative;z-index:1}
+.container{width:100%;max-width:520px;padding:12px;position:relative;z-index:1}
 .title{
   font-family:"Orbitron","Share Tech Mono",monospace;font-size:22px;font-weight:700;
   text-align:center;margin-bottom:12px;letter-spacing:3px;
@@ -80,19 +80,22 @@ body::after{
 /* 棋盘 */
 .board-wrap{
   background:var(--card);border:1px solid var(--border);border-radius:10px;
-  padding:8px;margin:0 auto;position:relative;overflow:hidden;
+  padding:8px;margin:0 auto;position:relative;
+  overflow:auto;-webkit-overflow-scrolling:touch;
+  max-height:70vh;
 }
 .board-wrap::before{
   content:'';position:absolute;top:0;left:0;right:0;height:1px;
   background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:.3;
+  z-index:1;
 }
 .board{
   display:grid;gap:2px;user-select:none;
 }
 .cell{
-  width:100%;aspect-ratio:1;border-radius:3px;
+  border-radius:3px;
   display:flex;align-items:center;justify-content:center;
-  font-size:14px;font-weight:700;cursor:pointer;
+  font-weight:700;cursor:pointer;
   transition:all .1s;position:relative;
 }
 .cell.hidden{
@@ -105,7 +108,7 @@ body::after{
 .cell.mine{background:rgba(255,51,102,.15);border-color:rgba(255,51,102,.3)}
 .cell.mine-hit{background:rgba(255,51,102,.4);border-color:var(--danger);animation:pulse .5s infinite}
 .cell.flagged{border-color:var(--accent2)}
-.cell.flagged::after{content:'🚩';font-size:12px}
+.cell.flagged::after{content:'🚩'}
 .cell .n1{color:var(--accent3)}.cell .n2{color:var(--accent)}.cell .n3{color:var(--accent2)}
 .cell .n4{color:#8b5cf6}.cell .n5{color:var(--danger)}.cell .n6{color:#06b6d4}
 .cell .n7{color:#f59e0b}.cell .n8{color:var(--muted-fg)}
@@ -233,18 +236,27 @@ function placeMines(safeR, safeC) {
 
 function renderBoard() {
   const el = document.getElementById('board');
-  // calc cell size
-  const maxW = Math.min(window.innerWidth - 40, 464);
+  const wrap = document.querySelector('.board-wrap');
+  // calc cell size - fit to screen width
+  const maxW = Math.min(window.innerWidth - 32, 504);
   const gap = 2;
-  const cellSize = Math.floor((maxW - (cols-1)*gap - 16) / cols);
-  const clampedSize = Math.max(cellSize, 20);
-  el.style.gridTemplateColumns = `repeat(${cols}, ${clampedSize}px)`;
+  const padding = 16;
+  let cellSize = Math.floor((maxW - (cols-1)*gap - padding) / cols);
+  cellSize = Math.max(cellSize, 16); // minimum 16px
+  // for large boards, use even smaller cells
+  if (cols > 20) cellSize = Math.min(cellSize, 22);
+  el.style.gridTemplateColumns = `repeat(${cols}, ${cellSize}px)`;
   el.style.gap = gap + 'px';
+  // adjust font size based on cell size
+  const fontSize = Math.max(Math.floor(cellSize * 0.65), 10);
+  el.style.fontSize = fontSize + 'px';
   el.innerHTML = '';
   for (let r=0; r<rows; r++) for (let c=0; c<cols; c++) {
     const cell = document.createElement('div');
     cell.className = 'cell';
     cell.dataset.r = r; cell.dataset.c = c;
+    cell.style.width = cellSize + 'px';
+    cell.style.height = cellSize + 'px';
     updateCell(cell, r, c);
     // events
     cell.addEventListener('click', () => onCellClick(r, c));
@@ -257,6 +269,11 @@ function renderBoard() {
     cell.addEventListener('touchend', () => { if (lpt) clearTimeout(lpt); });
     cell.addEventListener('touchmove', () => { if (lpt) clearTimeout(lpt); });
     el.appendChild(cell);
+  }
+  // scroll board to center
+  if (wrap) {
+    wrap.scrollLeft = (el.offsetWidth - wrap.offsetWidth) / 2;
+    wrap.scrollTop = (el.offsetHeight - wrap.offsetHeight) / 2;
   }
 }
 
